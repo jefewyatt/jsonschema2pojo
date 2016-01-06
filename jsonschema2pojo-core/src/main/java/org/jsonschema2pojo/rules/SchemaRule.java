@@ -67,11 +67,7 @@ public class SchemaRule implements Rule<JClassContainer, JType> {
         if (schemaNode.has("title")) {
             nodeName = schemaNode.get("title").asText();
         }
-        
-        System.err.println("NAME " + nodeName);
-        if (nodeName.equals("view")) {
-            System.out.println("break");
-        }
+
         if (schemaNode.has("$ref")) {
             schema = ruleFactory.getSchemaStore().create(schema, schemaNode.get("$ref").asText());
             JsonNode newSchemaNode = schema.getContent();
@@ -83,6 +79,9 @@ public class SchemaRule implements Rule<JClassContainer, JType> {
             //Change the node name to the referenced schema's name?
             JsonNode schemaNode2 = schemaNode.get("$ref");
             String schemaFullName = schemaNode.get("$ref").asText();
+            if (schemaFullName.contains("asset_action")) {
+                System.out.println("break");
+            }
             String schemaName = schemaFullName.substring(schemaFullName.lastIndexOf("/")+1);
             return apply(schemaName, newSchemaNode, generatableType, schema);
         }
@@ -99,6 +98,12 @@ public class SchemaRule implements Rule<JClassContainer, JType> {
                 superType = e.getExistingClass();
             }
             System.err.println("Super type: " + superType.name());
+            
+            //If any of the "one ofs" are a simple type, I'm just gonna make this thing an object
+            for (JsonNode childSchema : schemaNode.get("oneOf")) {
+                apply(nodeName, childSchema, generatableType, schema).isPrimitive();
+                return generatableType.owner()._ref(Object.class); 
+            }
 
             // Now let's iterate through the schemas and get their types:
             for (JsonNode childSchema : schemaNode.get("oneOf")) {
@@ -146,6 +151,7 @@ public class SchemaRule implements Rule<JClassContainer, JType> {
                 JDefinedClass childClass = (JDefinedClass) childType;
 
                 childClass._extends((JDefinedClass)superType);
+                return childClass;
             }
             
         }
