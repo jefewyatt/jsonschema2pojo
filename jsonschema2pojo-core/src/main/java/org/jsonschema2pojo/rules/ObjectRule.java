@@ -16,8 +16,11 @@
 
 package org.jsonschema2pojo.rules;
 
-import static org.apache.commons.lang3.StringUtils.*;
-import static org.jsonschema2pojo.rules.PrimitiveTypes.*;
+import static org.apache.commons.lang3.StringUtils.capitalize;
+import static org.apache.commons.lang3.StringUtils.substringAfter;
+import static org.apache.commons.lang3.StringUtils.substringBefore;
+import static org.jsonschema2pojo.rules.PrimitiveTypes.isPrimitive;
+import static org.jsonschema2pojo.rules.PrimitiveTypes.primitiveType;
 
 import java.io.Serializable;
 import java.lang.reflect.Modifier;
@@ -25,10 +28,10 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 
 import javax.annotation.Generated;
 
-import android.os.Parcelable;
 import org.jsonschema2pojo.AnnotationStyle;
 import org.jsonschema2pojo.Schema;
 import org.jsonschema2pojo.SchemaMapper;
@@ -36,6 +39,8 @@ import org.jsonschema2pojo.exception.ClassAlreadyExistsException;
 import org.jsonschema2pojo.util.NameHelper;
 import org.jsonschema2pojo.util.ParcelableHelper;
 import org.jsonschema2pojo.util.TypeUtil;
+
+import android.os.Parcelable;
 
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -57,13 +62,14 @@ import com.sun.codemodel.JVar;
 
 /**
  * Applies the generation steps required for schemas of type "object".
- *
+ * 
  * @see <a
  *      href="http://tools.ietf.org/html/draft-zyp-json-schema-03#section-5.1">http://tools.ietf.org/html/draft-zyp-json-schema-03#section-5.1</a>
  */
 public class ObjectRule implements Rule<JPackage, JType> {
 
     private final RuleFactory ruleFactory;
+
     private final ParcelableHelper parcelableHelper;
 
     protected ObjectRule(RuleFactory ruleFactory, ParcelableHelper parcelableHelper) {
@@ -74,18 +80,21 @@ public class ObjectRule implements Rule<JPackage, JType> {
     /**
      * Applies this schema rule to take the required code generation steps.
      * <p>
-     * When this rule is applied for schemas of type object, the properties of
-     * the schema are used to generate a new Java class and determine its
-     * characteristics. See other implementers of {@link Rule} for details.
+     * When this rule is applied for schemas of type object, the properties of the schema are used to generate a new
+     * Java class and determine its characteristics. See other implementers of {@link Rule} for details.
      * <p>
-     * A new Java type will be created when this rule is applied, it is
-     * annotated as {@link Generated}, it is given <code>equals</code>,
-     * <code>hashCode</code> and <code>toString</code> methods and implements
-     * {@link Serializable}.
+     * A new Java type will be created when this rule is applied, it is annotated as {@link Generated}, it is given
+     * <code>equals</code>, <code>hashCode</code> and <code>toString</code> methods and implements {@link Serializable}.
      */
     @Override
     public JType apply(String nodeName, JsonNode node, JPackage _package, Schema schema) {
-
+        System.err.println("=====NODE====");
+        System.err.println(nodeName);
+        if (nodeName.equals("views")) {
+            System.err.println("break");
+        }
+        System.err.println("=====PARENT====");
+        System.err.println(getParentName(nodeName, node, schema.getContent()));
         JType superType = getSuperType(nodeName, node, _package, schema);
 
         if (superType.isPrimitive() || isFinal(superType)) {
@@ -119,6 +128,10 @@ public class ObjectRule implements Rule<JPackage, JType> {
         if (node.has("properties")) {
             ruleFactory.getPropertiesRule().apply(nodeName, node.get("properties"), jclass, schema);
         }
+        
+        if (node.has("patternProperties")) {
+            ruleFactory.getPatternPropertiesRule().apply(nodeName, node.get("patternProperties"), jclass, schema);
+        }
 
         if (ruleFactory.getGenerationConfig().isIncludeToString()) {
             addToString(jclass);
@@ -129,7 +142,7 @@ public class ObjectRule implements Rule<JPackage, JType> {
         }
 
         ruleFactory.getAdditionalPropertiesRule().apply(nodeName, node.get("additionalProperties"), jclass, schema);
-        
+
         if (node.has("required")) {
             ruleFactory.getRequiredArrayRule().apply(nodeName, node.get("required"), jclass, schema);
         }
@@ -144,7 +157,10 @@ public class ObjectRule implements Rule<JPackage, JType> {
         }
 
         if (ruleFactory.getGenerationConfig().isIncludeConstructors()) {
-            addConstructors(jclass, getConstructorProperties(node, ruleFactory.getGenerationConfig().isConstructorsRequiredPropertiesOnly()));
+            addConstructors(
+                    jclass,
+                    getConstructorProperties(node, ruleFactory.getGenerationConfig()
+                            .isConstructorsRequiredPropertiesOnly()));
         }
 
         return jclass;
@@ -153,28 +169,29 @@ public class ObjectRule implements Rule<JPackage, JType> {
 
     private void addParcelSupport(JDefinedClass jclass) {
         jclass._implements(Parcelable.class);
-        
+
         parcelableHelper.addWriteToParcel(jclass);
         parcelableHelper.addDescribeContents(jclass);
         parcelableHelper.addCreator(jclass);
     }
 
     /**
-     * Retrieve the list of properties to go in the constructor from node. This is all properties listed in node["properties"]
-     * if ! onlyRequired, and only required properties if onlyRequired.
+     * Retrieve the list of properties to go in the constructor from node. This is all properties listed in
+     * node["properties"] if ! onlyRequired, and only required properties if onlyRequired.
+     * 
      * @param node
      * @return
      */
     private List<String> getConstructorProperties(JsonNode node, boolean onlyRequired) {
 
-        if (! node.has("properties")) {
+        if (!node.has("properties")) {
             return new ArrayList<String>();
         }
 
         List<String> rtn = new ArrayList<String>();
 
         NameHelper nameHelper = ruleFactory.getNameHelper();
-        for (Iterator<Map.Entry<String, JsonNode>> properties = node.get("properties").fields(); properties.hasNext(); ) {
+        for (Iterator<Map.Entry<String, JsonNode>> properties = node.get("properties").fields(); properties.hasNext();) {
             Map.Entry<String, JsonNode> property = properties.next();
 
             JsonNode propertyObj = property.getValue();
@@ -191,24 +208,22 @@ public class ObjectRule implements Rule<JPackage, JType> {
 
     /**
      * Creates a new Java class that will be generated.
-     *
+     * 
      * @param nodeName
      *            the node name which may be used to dictate the new class name
      * @param node
-     *            the node representing the schema that caused the need for a
-     *            new class. This node may include a 'javaType' property which
-     *            if present will override the fully qualified name of the newly
-     *            generated class.
+     *            the node representing the schema that caused the need for a new class. This node may include a
+     *            'javaType' property which if present will override the fully qualified name of the newly generated
+     *            class.
      * @param _package
-     *            the package which may contain a new class after this method
-     *            call
+     *            the package which may contain a new class after this method call
      * @return a reference to a newly created class
      * @throws ClassAlreadyExistsException
-     *             if the given arguments cause an attempt to create a class
-     *             that already exists, either on the classpath or in the
-     *             current map of classes to be generated.
+     *             if the given arguments cause an attempt to create a class that already exists, either on the
+     *             classpath or in the current map of classes to be generated.
      */
-    private JDefinedClass createClass(String nodeName, JsonNode node, JPackage _package) throws ClassAlreadyExistsException {
+    private JDefinedClass createClass(String nodeName, JsonNode node, JPackage _package)
+            throws ClassAlreadyExistsException {
 
         JDefinedClass newType;
 
@@ -220,15 +235,20 @@ public class ObjectRule implements Rule<JPackage, JType> {
                 if (isPrimitive(fqn, _package.owner())) {
                     throw new ClassAlreadyExistsException(primitiveType(fqn, _package.owner()));
                 }
-                
+
                 int index = fqn.lastIndexOf(".") + 1;
-                if(index >= 0 && index<fqn.length()) {
-                    fqn = fqn.substring(0, index) + ruleFactory.getGenerationConfig().getClassNamePrefix() + fqn.substring(index)  +ruleFactory.getGenerationConfig().getClassNameSuffix();
+                if (index >= 0 && index < fqn.length()) {
+                    fqn = fqn.substring(0, index) + ruleFactory.getGenerationConfig().getClassNamePrefix()
+                            + fqn.substring(index) + ruleFactory.getGenerationConfig().getClassNameSuffix();
                 }
-                
+
                 try {
                     _package.owner().ref(Thread.currentThread().getContextClassLoader().loadClass(fqn));
-                    JClass existingClass = TypeUtil.resolveType(_package, fqn + (node.get("javaType").asText().contains("<") ? "<" + substringAfter(node.get("javaType").asText(), "<") : ""));
+                    JClass existingClass = TypeUtil.resolveType(
+                            _package,
+                            fqn
+                                    + (node.get("javaType").asText().contains("<") ? "<"
+                                            + substringAfter(node.get("javaType").asText(), "<") : ""));
 
                     throw new ClassAlreadyExistsException(existingClass);
                 } catch (ClassNotFoundException e) {
@@ -240,8 +260,7 @@ public class ObjectRule implements Rule<JPackage, JType> {
                 }
             } else {
                 if (usePolymorphicDeserialization) {
-                    newType = _package._class(JMod.PUBLIC, getClassName(nodeName, _package),
-                            ClassType.CLASS);
+                    newType = _package._class(JMod.PUBLIC, getClassName(nodeName, _package), ClassType.CLASS);
                 } else {
                     newType = _package._class(getClassName(nodeName, _package));
                 }
@@ -268,7 +287,8 @@ public class ObjectRule implements Rule<JPackage, JType> {
     private JType getSuperType(String nodeName, JsonNode node, JClassContainer jClassContainer, Schema schema) {
         JType superType = jClassContainer.owner().ref(Object.class);
         if (node.has("extends")) {
-            superType = ruleFactory.getSchemaRule().apply(nodeName + "Parent", node.get("extends"), jClassContainer, schema);
+            superType = ruleFactory.getSchemaRule().apply(nodeName + "Parent", node.get("extends"), jClassContainer,
+                    schema);
         }
         return superType;
     }
@@ -291,9 +311,8 @@ public class ObjectRule implements Rule<JPackage, JType> {
     private void addToString(JDefinedClass jclass) {
         JMethod toString = jclass.method(JMod.PUBLIC, String.class, "toString");
 
-        Class<?> toStringBuilder = ruleFactory.getGenerationConfig().isUseCommonsLang3() ?
-                org.apache.commons.lang3.builder.ToStringBuilder.class :
-                    org.apache.commons.lang.builder.ToStringBuilder.class;
+        Class<?> toStringBuilder = ruleFactory.getGenerationConfig().isUseCommonsLang3() ? org.apache.commons.lang3.builder.ToStringBuilder.class
+                : org.apache.commons.lang.builder.ToStringBuilder.class;
 
         JBlock body = toString.body();
         JInvocation reflectionToString = jclass.owner().ref(toStringBuilder).staticInvoke("reflectionToString");
@@ -311,19 +330,18 @@ public class ObjectRule implements Rule<JPackage, JType> {
 
         JMethod hashCode = jclass.method(JMod.PUBLIC, int.class, "hashCode");
 
-        Class<?> hashCodeBuilder = ruleFactory.getGenerationConfig().isUseCommonsLang3() ?
-                org.apache.commons.lang3.builder.HashCodeBuilder.class :
-                    org.apache.commons.lang.builder.HashCodeBuilder.class;
+        Class<?> hashCodeBuilder = ruleFactory.getGenerationConfig().isUseCommonsLang3() ? org.apache.commons.lang3.builder.HashCodeBuilder.class
+                : org.apache.commons.lang.builder.HashCodeBuilder.class;
 
         JBlock body = hashCode.body();
         JClass hashCodeBuilderClass = jclass.owner().ref(hashCodeBuilder);
         JInvocation hashCodeBuilderInvocation = JExpr._new(hashCodeBuilderClass);
 
         if (!jclass._extends().name().equals("Object")) {
-            hashCodeBuilderInvocation = hashCodeBuilderInvocation.invoke("appendSuper")
-                    .arg(JExpr._super().invoke("hashCode"));
+            hashCodeBuilderInvocation = hashCodeBuilderInvocation.invoke("appendSuper").arg(
+                    JExpr._super().invoke("hashCode"));
         }
-        
+
         for (JFieldVar fieldVar : fields.values()) {
             hashCodeBuilderInvocation = hashCodeBuilderInvocation.invoke("append").arg(fieldVar);
         }
@@ -354,7 +372,8 @@ public class ObjectRule implements Rule<JPackage, JType> {
             JFieldVar field = fields.get(property);
 
             if (field == null) {
-                throw new IllegalStateException("Property " + property + " hasn't been added to JDefinedClass before calling addConstructors");
+                throw new IllegalStateException("Property " + property
+                        + " hasn't been added to JDefinedClass before calling addConstructors");
             }
 
             fieldsConstructor.javadoc().addParam(property);
@@ -372,27 +391,25 @@ public class ObjectRule implements Rule<JPackage, JType> {
         JMethod equals = jclass.method(JMod.PUBLIC, boolean.class, "equals");
         JVar otherObject = equals.param(Object.class, "other");
 
-        Class<?> equalsBuilder = ruleFactory.getGenerationConfig().isUseCommonsLang3() ?
-                org.apache.commons.lang3.builder.EqualsBuilder.class :
-                    org.apache.commons.lang.builder.EqualsBuilder.class;
+        Class<?> equalsBuilder = ruleFactory.getGenerationConfig().isUseCommonsLang3() ? org.apache.commons.lang3.builder.EqualsBuilder.class
+                : org.apache.commons.lang.builder.EqualsBuilder.class;
 
         JBlock body = equals.body();
 
         body._if(otherObject.eq(JExpr._this()))._then()._return(JExpr.TRUE);
         body._if(otherObject._instanceof(jclass).eq(JExpr.FALSE))._then()._return(JExpr.FALSE);
-        
+
         JVar rhsVar = body.decl(jclass, "rhs").init(JExpr.cast(jclass, otherObject));
         JClass equalsBuilderClass = jclass.owner().ref(equalsBuilder);
         JInvocation equalsBuilderInvocation = JExpr._new(equalsBuilderClass);
 
         if (!jclass._extends().name().equals("Object")) {
-            equalsBuilderInvocation = equalsBuilderInvocation.invoke("appendSuper")
-                    .arg(JExpr._super().invoke("equals").arg(otherObject));
+            equalsBuilderInvocation = equalsBuilderInvocation.invoke("appendSuper").arg(
+                    JExpr._super().invoke("equals").arg(otherObject));
         }
-        
+
         for (JFieldVar fieldVar : fields.values()) {
-            equalsBuilderInvocation = equalsBuilderInvocation.invoke("append")
-                    .arg(fieldVar)
+            equalsBuilderInvocation = equalsBuilderInvocation.invoke("append").arg(fieldVar)
                     .arg(rhsVar.ref(fieldVar.name()));
         }
 
@@ -432,6 +449,24 @@ public class ObjectRule implements Rule<JPackage, JType> {
             return node.has("deserializationClassProperty");
         }
         return false;
+    }
+
+    private String getParentName(String childName, JsonNode childNode, JsonNode workingNode) {
+        if (workingNode.isObject()) {
+            Iterator<Entry<String, JsonNode>> it = workingNode.fields();
+            while (it.hasNext()) {
+                Entry<String, JsonNode> workingChild = it.next();
+                if (workingChild.getValue().has(childName) && workingChild.getValue().get(childName).equals(childNode)) {
+                    return workingChild.getKey();
+                }
+                return getParentName(childName, childNode, workingChild.getValue());
+            }
+        } else if (workingNode.isArray()) {
+            for (JsonNode arrayChild : workingNode) {
+                return getParentName(childName, childNode, arrayChild);
+            }
+        }
+        return null;  
     }
 
 }

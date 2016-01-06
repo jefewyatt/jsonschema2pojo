@@ -72,9 +72,16 @@ public class PropertyRule implements Rule<JDefinedClass, JDefinedClass> {
     public JDefinedClass apply(String nodeName, JsonNode node, JDefinedClass jclass, Schema schema) {
 
         String propertyName = ruleFactory.getNameHelper().getPropertyName(nodeName);
-
+        if (propertyName.equals("groups")) {
+            System.err.println("breal");
+        }
         JType propertyType = ruleFactory.getSchemaRule().apply(nodeName, node, jclass, schema);
-
+        
+        if (propertyType instanceof JDefinedClass) {
+            if (propertyType.name().endsWith("_")) {
+                
+            }
+        }
         node = resolveRefs(node, schema);
 
         JFieldVar field = jclass.field(JMod.PRIVATE, propertyType, propertyName);

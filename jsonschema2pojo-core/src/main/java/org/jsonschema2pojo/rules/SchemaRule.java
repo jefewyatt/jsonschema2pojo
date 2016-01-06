@@ -62,29 +62,39 @@ public class SchemaRule implements Rule<JClassContainer, JType> {
      */
     @Override
     public JType apply(String nodeName, JsonNode schemaNode, JClassContainer generatableType, Schema schema) {
+        
+        //Use title as the class name if present
+        if (schemaNode.has("title")) {
+            nodeName = schemaNode.get("title").asText();
+        }
+        
         System.err.println("NAME " + nodeName);
         if (nodeName.equals("view")) {
             System.out.println("break");
         }
         if (schemaNode.has("$ref")) {
             schema = ruleFactory.getSchemaStore().create(schema, schemaNode.get("$ref").asText());
-            schemaNode = schema.getContent();
+            JsonNode newSchemaNode = schema.getContent();
 
             if (schema.isGenerated()) {
                 return schema.getJavaType();
             }
-
-            return apply(nodeName, schemaNode, generatableType, schema);
+            
+            //Change the node name to the referenced schema's name?
+            JsonNode schemaNode2 = schemaNode.get("$ref");
+            String schemaFullName = schemaNode.get("$ref").asText();
+            String schemaName = schemaFullName.substring(schemaFullName.lastIndexOf("/")+1);
+            return apply(schemaName, newSchemaNode, generatableType, schema);
         }
 
         // Trying the oneOf bullshit
-        if (schemaNode.has("oneOf") || schemaNode.has("anyOf")) {
+        if (schemaNode.has("oneOf") /*|| schemaNode.has("anyOf")*/) {
             // create the empty polymorphic container
 
             System.err.println("Node name: " + nodeName);
             JDefinedClass superType;
             try {
-                superType = generatableType.owner()._class(JMod.PUBLIC, getClassName(nodeName, generatableType.getPackage()), ClassType.CLASS);
+                superType = generatableType.getPackage()._class(JMod.PUBLIC, getClassName(nodeName, generatableType.getPackage().getPackage()), ClassType.CLASS);
             } catch (JClassAlreadyExistsException e) {
                 superType = e.getExistingClass();
             }
@@ -94,7 +104,7 @@ public class SchemaRule implements Rule<JClassContainer, JType> {
             for (JsonNode childSchema : schemaNode.get("oneOf")) {
                 if (childSchema.has("$ref")) {
                     int index = childSchema.get("$ref").asText().lastIndexOf("/");
-                    nodeName.add(childSchema.get("$ref").asText().substring(index));
+                    nodeName = childSchema.get("$ref").asText().substring(index);
                     System.out.println("=========" + nodeName);
                 }
                 JType childType = apply(nodeName, childSchema, generatableType, schema);
@@ -106,6 +116,38 @@ public class SchemaRule implements Rule<JClassContainer, JType> {
                 }
             }
             return superType;
+        }
+        
+        /*The shitty pattern I'm using for allOf:
+            
+            It looks like all of our allOf usages are of the following scenario: the first schema
+            is the "parent" schema, that encompasses common fields. The next schema are the additions.
+            So I'm going to make that assumption here, even though there are many more uses of "allOf"
+            in the wild.
+        **/
+        if (schemaNode.has("allOf")) {
+            
+            //Let's see if my assumption is incorrect
+            if (schemaNode.get("allOf").size() > 2) {
+                System.err.println("=========Wow you're dumb!========");
+            }
+            
+            JsonNode parentSchema = schemaNode.get("allOf").get(0);
+            JsonNode childSchema = schemaNode.get("allOf").get(1);
+            
+            //Get the parent type
+            JType superType = apply(nodeName, parentSchema, generatableType, schema);
+
+            //Now we'll get the child type
+            JType childType = apply(nodeName, childSchema, generatableType, schema);
+            
+            //Now we just add an extends and hopefully we're done!
+            if (childType instanceof JDefinedClass && superType instanceof JDefinedClass) {
+                JDefinedClass childClass = (JDefinedClass) childType;
+
+                childClass._extends((JDefinedClass)superType);
+            }
+            
         }
 
         JType javaType;

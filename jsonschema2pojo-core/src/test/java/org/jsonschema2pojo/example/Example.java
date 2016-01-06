@@ -31,9 +31,9 @@ public class Example {
         
         JCodeModel codeModel = new JCodeModel();
         
-        URL source = new URL("file:///path/to/my/schema.json");
+        URL source = new URL("file:///Users/jclyne1/Desktop/fuego-schema.json");
         
-        new SchemaMapper().generate(codeModel, "ClassName", "com.example", source);
+        new SchemaMapper().generate(codeModel, "FuegoResponse", "com.example", source);
         
         codeModel.build(new File("output"));
         

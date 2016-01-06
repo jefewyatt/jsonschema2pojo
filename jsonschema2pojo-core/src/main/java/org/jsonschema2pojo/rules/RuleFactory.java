@@ -151,6 +151,10 @@ public class RuleFactory {
         return new PropertyRule(this);
     }
 
+    
+    public Rule<JDefinedClass, JDefinedClass> getPatternPropertiesRule() {
+        return new PatternPropertiesRule(this);
+    }
     /**
      * Provides a rule instance that should be applied when a "required"
      * declaration is found in the schema.
