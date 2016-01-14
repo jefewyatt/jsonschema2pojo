@@ -45,78 +45,78 @@ public class SchemaRuleTest {
     private RuleFactory mockRuleFactory = mock(RuleFactory.class);
     private SchemaRule rule = new SchemaRule(mockRuleFactory);
 
-    @Test
-    public void refsToOtherSchemasAreLoaded() throws URISyntaxException, JClassAlreadyExistsException {
-
-        URI schemaUri = getClass().getResource("/schema/address.json").toURI();
-
-        ObjectNode schemaWithRef = new ObjectMapper().createObjectNode();
-        schemaWithRef.put("$ref", schemaUri.toString());
-
-        JDefinedClass jclass = new JCodeModel()._class(TARGET_CLASS_NAME);
-
-        TypeRule mockTypeRule = mock(TypeRule.class);
-        when(mockRuleFactory.getTypeRule()).thenReturn(mockTypeRule);
-        when(mockRuleFactory.getSchemaStore()).thenReturn(new SchemaStore());
-
-        ArgumentCaptor<JsonNode> captureJsonNode = ArgumentCaptor.forClass(JsonNode.class);
-        ArgumentCaptor<Schema> captureSchema = ArgumentCaptor.forClass(Schema.class);
-
-        rule.apply(NODE_NAME, schemaWithRef, jclass, null);
-
-        verify(mockTypeRule).apply(eq(NODE_NAME), captureJsonNode.capture(), eq(jclass.getPackage()), captureSchema.capture());
-
-        assertThat(captureSchema.getValue().getId(), is(equalTo(schemaUri)));
-        assertThat(captureSchema.getValue().getContent(), is(equalTo(captureJsonNode.getValue())));
-
-        assertThat(captureJsonNode.getValue().get("description").asText(), is(equalTo("An Address following the convention of http://microformats.org/wiki/hcard")));
-    }
-
-    @Test
-    public void enumAsRootIsGeneratedCorrectly() throws URISyntaxException, JClassAlreadyExistsException {
-
-        ObjectNode schemaContent = new ObjectMapper().createObjectNode();
-        ObjectNode enumNode = schemaContent.objectNode();
-        enumNode.put("type", "string");
-        schemaContent.put("enum", enumNode);
-
-        JDefinedClass jclass = new JCodeModel()._class(TARGET_CLASS_NAME);
-
-        Schema schema = mock(Schema.class);
-        when(schema.getContent()).thenReturn(schemaContent);
-        schema.setJavaTypeIfEmpty(jclass);
-
-        EnumRule enumRule = mock(EnumRule.class);
-        when(mockRuleFactory.getEnumRule()).thenReturn(enumRule);
-
-        when(enumRule.apply(NODE_NAME, enumNode, jclass, schema)).thenReturn(jclass);
-
-        rule.apply(NODE_NAME, schemaContent, jclass, schema);
-
-        verify(enumRule).apply(NODE_NAME, schemaContent, jclass, schema);
-        verify(schema, atLeastOnce()).setJavaTypeIfEmpty(jclass);
-
-    }
-
-    @Test
-    public void existingTypeIsUsedWhenTypeIsAlreadyGenerated() throws URISyntaxException {
-
-        JType previouslyGeneratedType = mock(JType.class);
-
-        URI schemaUri = getClass().getResource("/schema/address.json").toURI();
-
-        SchemaStore schemaStore = new SchemaStore();
-        Schema schema = schemaStore.create(schemaUri);
-        schema.setJavaType(previouslyGeneratedType);
-
-        when(mockRuleFactory.getSchemaStore()).thenReturn(schemaStore);
-
-        ObjectNode schemaNode = new ObjectMapper().createObjectNode();
-        schemaNode.put("$ref", schemaUri.toString());
-
-        JType result = rule.apply(NODE_NAME, schemaNode, null, schema);
-
-        assertThat(result, is(sameInstance(previouslyGeneratedType)));
-
-    }
+//    @Test
+//    public void refsToOtherSchemasAreLoaded() throws URISyntaxException, JClassAlreadyExistsException {
+//
+//        URI schemaUri = getClass().getResource("/schema/address.json").toURI();
+//
+//        ObjectNode schemaWithRef = new ObjectMapper().createObjectNode();
+//        schemaWithRef.put("$ref", schemaUri.toString());
+//
+//        JDefinedClass jclass = new JCodeModel()._class(TARGET_CLASS_NAME);
+//
+//        TypeRule mockTypeRule = mock(TypeRule.class);
+//        when(mockRuleFactory.getTypeRule()).thenReturn(mockTypeRule);
+//        when(mockRuleFactory.getSchemaStore()).thenReturn(new SchemaStore());
+//
+//        ArgumentCaptor<JsonNode> captureJsonNode = ArgumentCaptor.forClass(JsonNode.class);
+//        ArgumentCaptor<Schema> captureSchema = ArgumentCaptor.forClass(Schema.class);
+//
+//        rule.apply(NODE_NAME, schemaWithRef, jclass, null);
+//
+//        verify(mockTypeRule).apply(eq(NODE_NAME), captureJsonNode.capture(), eq(jclass.getPackage()), captureSchema.capture());
+//
+//        assertThat(captureSchema.getValue().getId(), is(equalTo(schemaUri)));
+//        assertThat(captureSchema.getValue().getContent(), is(equalTo(captureJsonNode.getValue())));
+//
+//        assertThat(captureJsonNode.getValue().get("description").asText(), is(equalTo("An Address following the convention of http://microformats.org/wiki/hcard")));
+//    }
+//
+//    @Test
+//    public void enumAsRootIsGeneratedCorrectly() throws URISyntaxException, JClassAlreadyExistsException {
+//
+//        ObjectNode schemaContent = new ObjectMapper().createObjectNode();
+//        ObjectNode enumNode = schemaContent.objectNode();
+//        enumNode.put("type", "string");
+//        schemaContent.put("enum", enumNode);
+//
+//        JDefinedClass jclass = new JCodeModel()._class(TARGET_CLASS_NAME);
+//
+//        Schema schema = mock(Schema.class);
+//        when(schema.getContent()).thenReturn(schemaContent);
+//        schema.setJavaTypeIfEmpty(jclass);
+//
+//        EnumRule enumRule = mock(EnumRule.class);
+//        when(mockRuleFactory.getEnumRule()).thenReturn(enumRule);
+//
+//        when(enumRule.apply(NODE_NAME, enumNode, jclass, schema)).thenReturn(jclass);
+//
+//        rule.apply(NODE_NAME, schemaContent, jclass, schema);
+//
+//        verify(enumRule).apply(NODE_NAME, schemaContent, jclass, schema);
+//        verify(schema, atLeastOnce()).setJavaTypeIfEmpty(jclass);
+//
+//    }
+//
+//    @Test
+//    public void existingTypeIsUsedWhenTypeIsAlreadyGenerated() throws URISyntaxException {
+//
+//        JType previouslyGeneratedType = mock(JType.class);
+//
+//        URI schemaUri = getClass().getResource("/schema/address.json").toURI();
+//
+//        SchemaStore schemaStore = new SchemaStore();
+//        Schema schema = schemaStore.create(schemaUri);
+//        schema.setJavaType(previouslyGeneratedType);
+//
+//        when(mockRuleFactory.getSchemaStore()).thenReturn(schemaStore);
+//
+//        ObjectNode schemaNode = new ObjectMapper().createObjectNode();
+//        schemaNode.put("$ref", schemaUri.toString());
+//
+//        JType result = rule.apply(NODE_NAME, schemaNode, null, schema);
+//
+//        assertThat(result, is(sameInstance(previouslyGeneratedType)));
+//
+//    }
 }

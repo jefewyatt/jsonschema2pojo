@@ -14,28 +14,27 @@
  * limitations under the License.
  */
 
-package org.jsonschema2pojo.example;
+package org.jsonschema2pojo;
 
 import java.io.File;
 import java.io.IOException;
 import java.net.URL;
 
-import org.jsonschema2pojo.SchemaMapper;
 import com.sun.codemodel.JCodeModel;
 
-public class Example {
+public class GenerateFuegoModel {
 
     public static void main(String[] args) throws IOException {
         
         // BEGIN EXAMPLE
         
         JCodeModel codeModel = new JCodeModel();
+                
+        URL source = GenerateFuegoModel.class.getClassLoader().getResource("fuego-response.json");
+        new SchemaMapper().generate(codeModel, "FuegoResponse", "com.intuit.ctg.qa.automatedplayer.model", source);
         
-        URL source = new URL("file:///Users/jclyne1/Desktop/fuego-schema.json");
-        
-        new SchemaMapper().generate(codeModel, "FuegoResponse", "com.intuit.ctg.qa.automatedplayer.model.generated", source);
-        
-        codeModel.build(new File("output"));
+        new File("generated-sources").mkdir();
+        codeModel.build(new File("generated-sources"));
         
         // END EXAMPLE
 
