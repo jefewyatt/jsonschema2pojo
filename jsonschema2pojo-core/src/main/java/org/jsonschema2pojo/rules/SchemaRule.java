@@ -18,16 +18,19 @@ package org.jsonschema2pojo.rules;
 
 import static org.apache.commons.lang3.StringUtils.capitalize;
 
-import java.util.LinkedList;
-
-import com.fasterxml.jackson.databind.JsonNode;
-
 import org.jsonschema2pojo.Schema;
 
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.fasterxml.jackson.annotation.JsonSubTypes.Type;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.sun.codemodel.ClassType;
+import com.sun.codemodel.JAnnotationArrayMember;
+import com.sun.codemodel.JAnnotationUse;
 import com.sun.codemodel.JClassAlreadyExistsException;
 import com.sun.codemodel.JClassContainer;
 import com.sun.codemodel.JDefinedClass;
+import com.sun.codemodel.JMethod;
 import com.sun.codemodel.JMod;
 import com.sun.codemodel.JPackage;
 import com.sun.codemodel.JType;
@@ -62,8 +65,8 @@ public class SchemaRule implements Rule<JClassContainer, JType> {
      */
     @Override
     public JType apply(String nodeName, JsonNode schemaNode, JClassContainer generatableType, Schema schema) {
-        
-        //Use title as the class name if present
+
+        // Use title as the class name if present
         if (schemaNode.has("title")) {
             nodeName = schemaNode.get("title").asText();
         }
@@ -75,85 +78,196 @@ public class SchemaRule implements Rule<JClassContainer, JType> {
             if (schema.isGenerated()) {
                 return schema.getJavaType();
             }
-            
-            //Change the node name to the referenced schema's name?
+
+            // Change the node name to the referenced schema's name?
             JsonNode schemaNode2 = schemaNode.get("$ref");
             String schemaFullName = schemaNode.get("$ref").asText();
             if (schemaFullName.contains("asset_action")) {
                 System.out.println("break");
             }
-            String schemaName = schemaFullName.substring(schemaFullName.lastIndexOf("/")+1);
+            String schemaName = schemaFullName.substring(schemaFullName.lastIndexOf("/") + 1);
             return apply(schemaName, newSchemaNode, generatableType, schema);
         }
 
         // Trying the oneOf bullshit
-        if (schemaNode.has("oneOf") /*|| schemaNode.has("anyOf")*/) {
+        if (schemaNode.has("oneOf") || schemaNode.has("anyOf")) {
             // create the empty polymorphic container
 
             System.err.println("Node name: " + nodeName);
             JDefinedClass superType;
             try {
-                superType = generatableType.getPackage()._class(JMod.PUBLIC, getClassName(nodeName, generatableType.getPackage().getPackage()), ClassType.CLASS);
+                superType = generatableType.getPackage()._class(JMod.PUBLIC,
+                        getClassName(nodeName, generatableType.getPackage().getPackage()), ClassType.CLASS);
             } catch (JClassAlreadyExistsException e) {
                 superType = e.getExistingClass();
             }
             System.err.println("Super type: " + superType.name());
-            
-            //If any of the "one ofs" are a simple type, I'm just gonna make this thing an object
-            for (JsonNode childSchema : schemaNode.get("oneOf")) {
-                apply(nodeName, childSchema, generatableType, schema).isPrimitive();
-                return generatableType.owner()._ref(Object.class); 
-            }
 
             // Now let's iterate through the schemas and get their types:
-            for (JsonNode childSchema : schemaNode.get("oneOf")) {
+            JsonNode parentSchema = null;
+            if (schemaNode.has("oneOf")) {
+                parentSchema = schemaNode.get("oneOf");
+            } else {
+                parentSchema = schemaNode.get("anyOf");
+            }
+            // If any of the "one ofs" are a simple type, I'm just gonna make this thing an object
+            for (JsonNode childSchema : parentSchema) {
+                if (childSchema.has("type") && (childSchema.get("type").asText().equals("string"))) {
+                    return generatableType.owner()._ref(Object.class);
+                }
+
+            }
+
+            for (JsonNode childSchema : parentSchema) {
                 if (childSchema.has("$ref")) {
                     int index = childSchema.get("$ref").asText().lastIndexOf("/");
                     nodeName = childSchema.get("$ref").asText().substring(index);
                     System.out.println("=========" + nodeName);
                 }
                 JType childType = apply(nodeName, childSchema, generatableType, schema);
+
                 // let's see if this cast works =/
                 if (childType instanceof JDefinedClass) {
                     JDefinedClass childClass = (JDefinedClass) childType;
 
                     childClass._extends(superType);
+
+                    // We need to do the Jackson annotations:
+
+                    // Determine what our type name will be
+                    // Dereference the child schema if needed
+                    if (childSchema.has("$ref")) {
+                        Schema newSchema = ruleFactory.getSchemaStore().create(schema, childSchema.get("$ref").asText());
+                        childSchema = newSchema.getContent();
+                    }
+
+                    // Hack for assets -- if we see all of lets make it the second child schema
+                    // TODO find a good way to remove this
+                    if (childSchema.has("allOf")) {
+                        childSchema = childSchema.get("allOf").get(1);
+                    }
+
+                    String nameValue = null;
+                    try {
+                        nameValue = childSchema.get("properties").get("type").get("enum").get(0).asText();
+                    } catch (NullPointerException e) {
+
+                    }
+
+                    if (nameValue != null) {
+                        JAnnotationUse subTypeAnnotation = null;
+                        JAnnotationArrayMember arrayAnnotation = null;
+                        // First check if we already have the subtype annotation
+                        for (JAnnotationUse someAnnotation : superType.annotations()) {
+                            if (someAnnotation.getAnnotationClass().fullName().contains("JsonSubTypes")) {
+                                subTypeAnnotation = someAnnotation;
+                                arrayAnnotation = (JAnnotationArrayMember) subTypeAnnotation.getAnnotationMembers()
+                                        .get("value");
+                                break;
+                            }
+                        }
+
+                        // If we haven't found the subtype annotation, create it and the type info annotation
+                        if (subTypeAnnotation == null) {
+                            
+                            JAnnotationUse typeInfo = superType.annotate(JsonTypeInfo.class);
+                            typeInfo.param("use", JsonTypeInfo.Id.NAME);
+                            typeInfo.param("include", JsonTypeInfo.As.PROPERTY);
+                            typeInfo.param("property", "type");
+                            typeInfo.param("defaultImpl", Object.class);
+                            
+                            subTypeAnnotation = superType.annotate(JsonSubTypes.class);
+                            arrayAnnotation = subTypeAnnotation.paramArray("value");
+                        }
+
+                        // Add our subtype if it doesn't exist already
+                        boolean found = false;
+                        // try {
+                        // for (JAnnotationUse someAnnotation : arrayAnnotation.annotations()) {
+                        // JAnnotationValue stringValue = someAnnotation.getAnnotationMembers().get("name");
+                        // Class<?> stringValueClass = stringValue.getClass();
+                        // stringValueClass.getField("value").setAccessible(true);
+                        // Object stringLiteralObj = stringValueClass.getField("value").get(stringValue);
+                        // Class<?> stringLiteralClass = stringLiteralObj.getClass();
+                        // stringLiteralClass.getField("str").setAccessible(true);
+                        // String nameString = (String) stringLiteralClass.getField("str").get(stringLiteralObj);
+                        //
+                        // if (nameString.equals(nameValue)) {
+                        // found = true;
+                        // }
+                        // }
+                        // } catch (Exception e) {
+                        // e.printStackTrace();
+                        // }
+
+                        JAnnotationUse typeAnnotation = arrayAnnotation.annotate(Type.class);
+                        typeAnnotation.param("value", childClass);
+                        typeAnnotation.param("name", nameValue);
+                    }
+
                 }
             }
             return superType;
         }
-        
-        /*The shitty pattern I'm using for allOf:
-            
-            It looks like all of our allOf usages are of the following scenario: the first schema
-            is the "parent" schema, that encompasses common fields. The next schema are the additions.
-            So I'm going to make that assumption here, even though there are many more uses of "allOf"
-            in the wild.
-        **/
+        // @JsonSubTypes({ @Type(value=AssetText.class, name="text"),
+        // @Type(value=AssetImage.class, name="image"),
+
+        /*
+         * The shitty pattern I'm using for allOf:
+         * 
+         * It looks like all of our allOf usages are of the following scenario: the first schema is the "parent" schema,
+         * that encompasses common fields. The next schema are the additions. So I'm going to make that assumption here,
+         * even though there are many more uses of "allOf" in the wild.
+         */
         if (schemaNode.has("allOf")) {
-            
-            //Let's see if my assumption is incorrect
-            if (schemaNode.get("allOf").size() > 2) {
-                System.err.println("=========Wow you're dumb!========");
+
+            String childNodeName = nodeName;
+            if (schemaNode.has("title")) {
+                childNodeName = schemaNode.get("title").asText();
             }
-            
+
             JsonNode parentSchema = schemaNode.get("allOf").get(0);
             JsonNode childSchema = schemaNode.get("allOf").get(1);
-            
-            //Get the parent type
+
+            // Get the parent type
             JType superType = apply(nodeName, parentSchema, generatableType, schema);
 
-            //Now we'll get the child type
-            JType childType = apply(nodeName, childSchema, generatableType, schema);
-            
-            //Now we just add an extends and hopefully we're done!
+            // Now we'll get the child type
+            JType childType = apply(childNodeName, childSchema, generatableType, schema);
+
+            // Now we just add an extends and hopefully we're done!
             if (childType instanceof JDefinedClass && superType instanceof JDefinedClass) {
                 JDefinedClass childClass = (JDefinedClass) childType;
 
-                childClass._extends((JDefinedClass)superType);
+                // Hack to remove the type field
+                JMethod getMethod = null;
+                JMethod setMethod = null;
+                for (JMethod method : childClass.methods()) {
+                    if (method.name().contains("getType")) {
+                        getMethod = method;
+                    } else if (method.name().contains("setType")) {
+                        setMethod = method;
+                    }
+
+                }
+                childClass.methods().remove(getMethod);
+                childClass.methods().remove(setMethod);
+
+                for (JMethod method : childClass.methods()) {
+                    if (method.name().contains("getMetaData")) {
+                        getMethod = method;
+                    } else if (method.name().contains("setMetaData")) {
+                        setMethod = method;
+                    }
+
+                }
+                childClass.methods().remove(getMethod);
+                childClass.methods().remove(setMethod);
+
+                childClass._extends((JDefinedClass) superType);
                 return childClass;
             }
-            
+
         }
 
         JType javaType;

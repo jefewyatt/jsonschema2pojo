@@ -33,7 +33,7 @@ public class Example {
         
         URL source = new URL("file:///Users/jclyne1/Desktop/fuego-schema.json");
         
-        new SchemaMapper().generate(codeModel, "FuegoResponse", "com.example", source);
+        new SchemaMapper().generate(codeModel, "FuegoResponse", "com.intuit.ctg.qa.automatedplayer.model.generated", source);
         
         codeModel.build(new File("output"));
         
