@@ -1,9 +1,21 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>com.intuit.ctg.qa</groupId>
-	<artifactId>frf-model-generator</artifactId>
+	<artifactId>fuego-model</artifactId>
 	<name>frf-model-generator</name>
 	<version>1.0.0-SNAPSHOT</version>
+	<distributionManagement>
+		<repository>
+			<id>intuit-nexus-releases</id>
+			<name>CTG Engineering Release Repository</name>
+			<url>http://sdgctgdevrepo.corp.intuit.net/nexus/content/repositories/ENG.CTG.Intuit-Releases</url>
+		</repository>
+		<snapshotRepository>
+			<id>intuit-nexus-snapshots</id>
+			<name>CTG Engineering Snapshot Repository</name>
+			<url>http://sdgctgdevrepo.corp.intuit.net/nexus/content/repositories/ENG.CTG.Intuit-Snapshots</url>
+		</snapshotRepository>
+	</distributionManagement>
 	<dependencies>
 		<dependency>
 			<groupId>com.fasterxml.jackson.core</groupId>
@@ -95,6 +107,7 @@
 					</execution>
 				</executions>
 			</plugin>
+			
 			<plugin>
 				<groupId>org.codehaus.mojo</groupId>
 				<artifactId>build-helper-maven-plugin</artifactId>
@@ -116,22 +129,12 @@
 			</plugin>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
-				<artifactId>maven-source-plugin</artifactId>
-				<executions>
-					<execution>
-						<id>attach-sources</id>
-						<phase>install</phase>
-						<goals>
-							<goal>jar</goal>
-						</goals>
-					</execution>
-				</executions>
+				<artifactId>maven-jar-plugin</artifactId>
+				<version>2.6</version>
 				<configuration>
 					<includes>
 						<include>**/com/intuit/**</include>
 					</includes>
-					<finalName>fuego-model</finalName>
-					<classifier>${project.version}</classifier>
 				</configuration>
 			</plugin>
 		</plugins>

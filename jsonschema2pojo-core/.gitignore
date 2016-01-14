@@ -1,1 +1,6 @@
 output
+generated-sources
+target
+.classpath
+.settings
+.preferences
